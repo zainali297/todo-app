@@ -44,11 +44,11 @@ if ($method === 'GET') {
     try {
         $categories = $pdo->query('SELECT id, name, color FROM categories ORDER BY id')->fetchAll();
         $tasks = $pdo->query(
-            'SELECT id, title, notes, is_done, due_date, priority, category_id, sort_order, completed_at, created_at
+            'SELECT id, title, notes, is_done, due_date, priority, repeat_rule, category_id, sort_order, completed_at, created_at
              FROM tasks ORDER BY sort_order ASC, id ASC'
         )->fetchAll();
     } catch (PDOException $e) {
-        fail(500, 'Database error. Did you run migration_notes.sql?');
+        fail(500, 'Database error. Did you run migration_notes.sql and migration_recurring.sql?');
     }
 
     $stamp = date('Y-m-d');
@@ -84,7 +84,7 @@ if ($method === 'GET') {
     header('Content-Disposition: attachment; filename="todo-tasks-' . $stamp . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 byte order mark so Excel reads accents and other scripts correctly
-    fputcsv($out, ['Title', 'Notes', 'Done', 'Due date', 'Priority', 'Category', 'Completed at', 'Created at'], ',', '"', '');
+    fputcsv($out, ['Title', 'Notes', 'Done', 'Due date', 'Repeats', 'Priority', 'Category', 'Completed at', 'Created at'], ',', '"', '');
     foreach ($tasks as $t) {
         $cat = $t['category_id'] !== null ? ($names[(int)$t['category_id']] ?? '') : '';
         fputcsv($out, [
@@ -92,6 +92,7 @@ if ($method === 'GET') {
             csv_safe($t['notes'] ?? ''),
             $t['is_done'] ? 'yes' : 'no',
             $t['due_date'] ?? '',
+            $t['repeat_rule'] ?? 'none',
             $t['priority'],
             csv_safe($cat),
             $t['completed_at'] ?? '',
@@ -151,6 +152,11 @@ try {
         if (mb_strlen($notes) > 2000) bad("$label has notes longer than 2000 characters.");
         $priority = $t['priority'] ?? 'medium';
         if (!in_array($priority, ['low', 'medium', 'high'], true)) bad("$label has an invalid priority.");
+        // Repeat is optional (older backups have none) and needs a due date.
+        $repeat = $t['repeat_rule'] ?? 'none';
+        if (!in_array($repeat, ['none', 'daily', 'weekly', 'monthly'], true)) bad("$label has an invalid repeat setting.");
+        $dueDate = valid_date($t['due_date'] ?? null, $label);
+        if ($dueDate === null) $repeat = 'none';
         $isDone = !empty($t['is_done']) ? 1 : 0;
         $catId = filter_var($t['category_id'] ?? null, FILTER_VALIDATE_INT);
         $order = filter_var($t['sort_order'] ?? null, FILTER_VALIDATE_INT);
@@ -158,8 +164,9 @@ try {
             'title'        => $title,
             'notes'        => $notes === '' ? null : $notes,
             'is_done'      => $isDone,
-            'due_date'     => valid_date($t['due_date'] ?? null, $label),
+            'due_date'     => $dueDate,
             'priority'     => $priority,
+            'repeat_rule'  => $repeat,
             'category_id'  => ($catId !== false && isset($cats[$catId])) ? $catId : null,
             'sort_order'   => $order === false ? $i : $order,
             'completed_at' => $isDone ? valid_datetime($t['completed_at'] ?? null, $label) : null,
@@ -196,13 +203,14 @@ try {
 
     $base = (int)$pdo->query('SELECT COALESCE(MAX(sort_order), 0) FROM tasks')->fetchColumn();
     $addTask = $pdo->prepare(
-        'INSERT INTO tasks (title, notes, is_done, due_date, priority, category_id, sort_order, completed_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))'
+        'INSERT INTO tasks (title, notes, is_done, due_date, priority, category_id, repeat_rule, sort_order, completed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))'
     );
     foreach ($tasks as $k => $t) {
         $addTask->execute([
             $t['title'], $t['notes'], $t['is_done'], $t['due_date'], $t['priority'],
             $t['category_id'] === null ? null : $map[$t['category_id']],
+            $t['repeat_rule'],
             $base + $k + 1, $t['completed_at'], $t['created_at'],
         ]);
     }

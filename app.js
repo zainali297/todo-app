@@ -7,6 +7,7 @@ const form = document.getElementById('add-form');
 const input = document.getElementById('new-task');
 const dueInput = document.getElementById('new-due');
 const notesInput = document.getElementById('new-notes');
+const repeatInput = document.getElementById('new-repeat');
 const prioInput = document.getElementById('new-priority');
 const newCatSelect = document.getElementById('new-category');
 const catFilterSelect = document.getElementById('category-filter');
@@ -48,6 +49,7 @@ let query = '';              // search text, lower-cased
 
 const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
 const PRIORITY_LABEL = { high: 'High', medium: 'Medium', low: 'Low' };
+const REPEAT_LABEL = { daily: 'daily', weekly: 'weekly', monthly: 'monthly' };
 const EMPTY_TEXT = {
   all: 'Nothing here yet. Add your first task above.',
   open: 'No open tasks. Everything is done.',
@@ -461,8 +463,11 @@ function renderItem(t) {
   cb.checked = t.is_done;
   cb.setAttribute('aria-label', 'Mark "' + t.title + '" as done');
   cb.addEventListener('change', async () => {
-    try { await request('PUT', { id: t.id, is_done: cb.checked }); load(); }
-    catch (e) { showError(e.message); }
+    try {
+      const r = await request('PUT', { id: t.id, is_done: cb.checked, today: todayStr() });
+      if (r.next_due) flash(`Next "${t.title}" is due ${formatDate(r.next_due)}.`);
+      load();
+    } catch (e) { showError(e.message); }
   });
 
   const body = document.createElement('div');
@@ -486,6 +491,13 @@ function renderItem(t) {
     dueEl.className = due.cls;
     dueEl.textContent = due.text;
     meta.appendChild(dueEl);
+  }
+
+  if (t.repeat_rule && t.repeat_rule !== 'none') {
+    const rep = document.createElement('span');
+    rep.className = 'repeat';
+    rep.textContent = '↻ Repeats ' + REPEAT_LABEL[t.repeat_rule];
+    meta.appendChild(rep);
   }
 
   const cat = t.category_id !== null ? categoryById(t.category_id) : null;
@@ -548,6 +560,17 @@ function renderEditItem(t) {
   due.value = t.due_date || '';
   due.setAttribute('aria-label', 'Due date');
 
+  const repeat = document.createElement('select');
+  repeat.setAttribute('aria-label', 'Repeat');
+  [['none', 'Does not repeat'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly']]
+    .forEach(([v, label]) => {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = label;
+      o.selected = v === (t.repeat_rule || 'none');
+      repeat.appendChild(o);
+    });
+
   const prio = document.createElement('select');
   prio.setAttribute('aria-label', 'Priority');
   ['low', 'medium', 'high'].forEach(p => {
@@ -578,12 +601,17 @@ function renderEditItem(t) {
 
   f.addEventListener('submit', async e => {
     e.preventDefault();
+    if (repeat.value !== 'none' && !due.value) {
+      showError('Choose a due date for a repeating task.');
+      return;
+    }
     try {
       await request('PUT', {
         id: t.id,
         title: title.value,
         notes: notes.value,
         due_date: due.value || null,
+        repeat_rule: repeat.value,
         priority: prio.value,
         category_id: cat.value === '' ? null : Number(cat.value),
       });
@@ -596,7 +624,7 @@ function renderEditItem(t) {
     if (e.key === 'Escape') { editingId = null; render(); }
   });
 
-  f.append(title, notes, due, prio, cat, buttons);
+  f.append(title, notes, due, repeat, prio, cat, buttons);
   li.appendChild(f);
   setTimeout(() => title.focus(), 0);
   return li;
@@ -738,17 +766,23 @@ form.addEventListener('submit', async e => {
   e.preventDefault();
   const title = input.value.trim();
   if (!title) return;
+  if (repeatInput.value !== 'none' && !dueInput.value) {
+    showError('Choose a due date for a repeating task.');
+    return;
+  }
   try {
     await request('POST', {
       title,
       notes: notesInput.value,
       due_date: dueInput.value || null,
+      repeat_rule: repeatInput.value,
       priority: prioInput.value,
       category_id: newCatSelect.value === '' ? null : Number(newCatSelect.value),
     });
     input.value = '';
     notesInput.value = '';
     dueInput.value = '';
+    repeatInput.value = 'none';
     prioInput.value = 'medium';   // category stays, handy when adding several tasks in a row
     showError('');
     load();
@@ -777,9 +811,24 @@ clearBtn.addEventListener('click', async () => {
 // The task disappears at once, but the DELETE is only sent after 7 seconds
 // (or when you delete another task, or leave the page). Undo cancels it.
 
+let flashTimer = null;
+
 function showToast(msg) {
+  clearTimeout(flashTimer);
   toastMsg.textContent = msg;
+  toastUndo.hidden = false;
   toastEl.hidden = false;
+}
+
+// A short message with no Undo button (used when a repeating task schedules its next date).
+// It never replaces the toast of a delete that is still waiting for Undo.
+function flash(msg) {
+  if (pendingDelete) return;
+  clearTimeout(flashTimer);
+  toastMsg.textContent = msg;
+  toastUndo.hidden = true;
+  toastEl.hidden = false;
+  flashTimer = setTimeout(() => { toastEl.hidden = true; toastUndo.hidden = false; }, 4000);
 }
 
 function hideToast() {

@@ -71,7 +71,7 @@ button:hover { filter: brightness(1.1); }
 /* Add form */
 .add { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .add-title { padding: 10px 12px; }
-.add-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.add-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 2px; font-size: .85rem; color: var(--muted); min-width: 0; }
 
 /* Notes */
@@ -145,6 +145,7 @@ textarea {
   font-weight: 600; text-decoration: underline;
 }
 .toast button:hover { filter: none; opacity: .8; }
+.toast button[hidden] { display: none; }
 
 /* Stats */
 .stats {
@@ -242,6 +243,7 @@ textarea {
 .item .meta .prio-low { color: var(--p-low); }
 .item .meta .overdue { color: var(--danger); font-weight: 600; }
 .item .meta .cat { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); }
+.item .meta .repeat { color: var(--accent); }
 .item.overdue-row { background: var(--overdue-bg); }
 
 .item .actions { display: flex; gap: 4px; }
@@ -253,7 +255,7 @@ textarea {
 
 /* Edit mode */
 .item.editing { align-items: flex-start; }
-.edit-form { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; min-width: 0; }
+.edit-form { flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; min-width: 0; }
 .edit-form .e-title { grid-column: 1 / -1; }
 .edit-form .e-buttons { grid-column: 1 / -1; display: flex; gap: 8px; }
 .edit-form .e-cancel { background: transparent; color: var(--muted); border: 1px solid var(--line); }
