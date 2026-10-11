@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>To-do list</title>
+  <script>
+    // Apply the saved theme before the page paints, so there is no flash.
+    (function () {
+      var theme = null;
+      try { theme = localStorage.getItem('theme'); } catch (e) {}
+      if (theme !== 'dark' && theme !== 'light') {
+        theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <h1>To-do list</h1>
+      <button type="button" id="theme-toggle" class="theme-toggle"></button>
+    </header>
+    <p class="count" id="count" aria-live="polite"></p>
+
+    <form id="add-form" class="add">
+      <input id="new-task" class="add-title" type="text" maxlength="255" placeholder="What needs doing?" autocomplete="off" required>
+      <button type="submit" class="add-btn">Add task</button>
+
+      <div class="add-fields">
+        <label class="field">
+          <span>Due date</span>
+          <input id="new-due" type="date">
+        </label>
+        <label class="field">
+          <span>Priority</span>
+          <select id="new-priority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Category</span>
+          <select id="new-category"></select>
+        </label>
+      </div>
+      <textarea id="new-notes" class="add-notes" rows="2" maxlength="2000" placeholder="Notes (optional)"></textarea>
+    </form>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <details class="cats">
+      <summary>Manage categories</summary>
+      <form id="cat-form" class="cat-form">
+        <input id="cat-name" type="text" maxlength="40" placeholder="New category, e.g. Work" aria-label="Category name" autocomplete="off" required>
+        <div id="cat-colors" class="swatches" role="radiogroup" aria-label="Category colour"></div>
+        <button type="submit">Add category</button>
+      </form>
+      <ul id="cat-list" class="cat-list"></ul>
+      <p id="cat-empty" class="cat-empty">No categories yet. Add one to start labelling tasks.</p>
+    </details>
+
+    <details class="stats">
+      <summary>Stats</summary>
+      <div id="stat-grid" class="stat-grid"></div>
+      <p id="stat-note" class="stat-note"></p>
+      <h2 class="stat-sub">By category</h2>
+      <ul id="stat-cats" class="stat-cats"></ul>
+    </details>
+
+    <input id="search" class="search" type="search" placeholder="Search tasks and notes" aria-label="Search tasks and notes" autocomplete="off">
+
+    <div class="toolbar">
+      <div class="filters" role="group" aria-label="Filter tasks">
+        <button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="filter" data-filter="open" aria-pressed="false">Open</button>
+        <button type="button" class="filter" data-filter="done" aria-pressed="false">Done</button>
+        <button type="button" class="filter" data-filter="overdue" aria-pressed="false">Overdue</button>
+      </div>
+      <div class="selects">
+        <label class="sort">
+          <span>Category</span>
+          <select id="category-filter"></select>
+        </label>
+        <label class="sort">
+          <span>Sort by</span>
+          <select id="sort">
+            <option value="newest">Newest</option>
+            <option value="due">Due date</option>
+            <option value="priority">Priority</option>
+            <option value="manual">My order</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <p id="reorder-hint" class="hint" hidden>Drag the ⋮⋮ handle to reorder tasks, or focus it and press the up or down arrow key. New tasks are added at the bottom.</p>
+    <p id="announce" class="sr-only" aria-live="polite"></p>
+
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="empty" hidden></p>
+
+    <button id="clear-done" class="link" hidden>Delete completed tasks</button>
+
+    <details class="data">
+      <summary>Backup and restore</summary>
+      <div class="data-row">
+        <a class="btn" href="backup.php?format=json" download>Download backup (JSON)</a>
+        <a class="btn" href="backup.php?format=csv" download>Download tasks (CSV)</a>
+      </div>
+      <p class="data-help">The JSON backup includes your categories and can be restored below. The CSV is for opening in a spreadsheet and can't be restored.</p>
+
+      <form id="restore-form" class="restore-form">
+        <label class="field">
+          <span>Backup file (.json)</span>
+          <input id="restore-file" type="file" accept=".json,application/json" required>
+        </label>
+        <fieldset class="restore-mode">
+          <legend>When restoring</legend>
+          <label><input type="radio" name="restore-mode" value="merge" checked> Add to my current tasks</label>
+          <label><input type="radio" name="restore-mode" value="replace"> Replace everything</label>
+        </fieldset>
+        <button type="submit" id="restore-btn">Restore from file</button>
+      </form>
+      <p id="restore-msg" class="data-msg" role="status"></p>
+    </details>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+    <span id="toast-msg"></span>
+    <button type="button" id="toast-undo">Undo</button>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

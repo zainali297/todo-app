@@ -1,0 +1,12 @@
+# Backups downloaded from the app
+todo-backup-*.json
+todo-tasks-*.csv
+
+# Zip files and leftovers
+*.zip
+
+# OS and editor files
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
