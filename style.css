@@ -208,7 +208,7 @@ textarea {
   display: flex; justify-content: space-between; align-items: center;
   gap: 12px; flex-wrap: wrap; margin-top: 12px;
 }
-.filters { display: flex; gap: 6px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .filter {
   background: transparent; color: var(--muted);
   border: 1px solid var(--line); padding: 6px 14px; font-size: .9rem;
@@ -217,6 +217,12 @@ textarea {
 .filter[aria-pressed="true"] {
   background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
 }
+.filter .n { margin-left: 4px; font-size: .8rem; opacity: .75; }
+.day-heading {
+  list-style: none; margin: 18px 0 2px; padding-left: 16px;
+  font-size: .82rem; font-weight: 600; color: var(--muted);
+}
+.day-heading + .item { border-top: 0; }
 .selects { display: flex; gap: 12px; flex-wrap: wrap; }
 .sort { display: flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--muted); }
 .sort select { padding: 5px 8px; max-width: 150px; }

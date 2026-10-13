@@ -55,6 +55,8 @@ const EMPTY_TEXT = {
   open: 'No open tasks. Everything is done.',
   done: 'No completed tasks yet.',
   overdue: 'No overdue tasks.',
+  today: 'Nothing due today.',
+  upcoming: 'Nothing due in the next 7 days.',
 };
 const PALETTE = [
   { name: 'Teal',   hex: '#2f7d6b' },
@@ -94,6 +96,19 @@ function daysAgoStr(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function daysAheadStr(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Heading above each day in the Upcoming view: "Tomorrow", "Friday, Oct 17"
+function dayHeading(str) {
+  if (str === daysAheadStr(1)) return 'Tomorrow';
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 function formatDate(str) {
@@ -308,34 +323,61 @@ function emptyMessage() {
   return EMPTY_TEXT[filter];
 }
 
-function matchesStatus(t) {
-  if (filter === 'open') return !t.is_done;
-  if (filter === 'done') return t.is_done;
-  if (filter === 'overdue') return isOverdue(t);
+// Does the task belong to the status view f? ("today" and "upcoming" only cover open tasks)
+function matchesStatus(t, f = filter) {
+  if (f === 'open') return !t.is_done;
+  if (f === 'done') return t.is_done;
+  if (f === 'overdue') return isOverdue(t);
+  if (f === 'today') return !t.is_done && t.due_date === todayStr();
+  if (f === 'upcoming') {
+    return !t.is_done && !!t.due_date && t.due_date > todayStr() && t.due_date <= daysAheadStr(7);
+  }
   return true;
 }
 
+// Does the task pass the category filter and the search box?
+function inScope(t) {
+  const inCategory = categoryFilter === 'all' ||
+    (categoryFilter === 'none' ? t.category_id === null : String(t.category_id) === categoryFilter);
+  const inSearch = !query || t.title.toLowerCase().includes(query) ||
+    (t.notes || '').toLowerCase().includes(query);
+  return inCategory && inSearch;
+}
+
 function getVisible() {
-  return tasks
-    .filter(matchesStatus)
-    .filter(t => categoryFilter === 'all' ||
-      (categoryFilter === 'none' ? t.category_id === null : String(t.category_id) === categoryFilter))
-    .filter(t => !query || t.title.toLowerCase().includes(query) ||
-      (t.notes || '').toLowerCase().includes(query))
-    .sort(compare);
+  return tasks.filter(t => matchesStatus(t) && inScope(t)).sort(compare);
 }
 
 function render() {
   list.innerHTML = '';
   const visible = getVisible();
+  // The Upcoming view, sorted by due date, gets a heading above each day.
+  // (Never in "My order", where the list must hold only tasks for dragging.)
+  const grouped = filter === 'upcoming' && sortBy === 'due';
+  let lastDay = null;
   visible.forEach(t => {
+    if (grouped && t.due_date !== lastDay) {
+      lastDay = t.due_date;
+      const h = document.createElement('li');
+      h.className = 'day-heading';
+      h.setAttribute('role', 'presentation');
+      h.textContent = dayHeading(t.due_date);
+      list.appendChild(h);
+    }
     const li = t.id === editingId ? renderEditItem(t) : renderItem(t);
     li.dataset.id = t.id;
     list.appendChild(li);
   });
   hintEl.hidden = sortBy !== 'manual';
 
-  filterBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filter === filter)));
+  // Filter buttons: highlight the active one and show how many tasks each would list
+  // (counted within the current category and search).
+  const scoped = tasks.filter(inScope);
+  filterBtns.forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.filter === filter));
+    const n = b.querySelector('.n');
+    if (n) n.textContent = scoped.filter(t => matchesStatus(t, b.dataset.filter)).length;
+  });
 
   const open = tasks.filter(t => !t.is_done).length;
   const overdue = tasks.filter(isOverdue).length;
@@ -737,6 +779,11 @@ function startDrag(e, handle) {
 
 filterBtns.forEach(b => b.addEventListener('click', () => {
   filter = b.dataset.filter;
+  // Upcoming reads best in date order, so switch from "Newest" to "Due date" (you can change it back).
+  if (filter === 'upcoming' && sortBy === 'newest') {
+    sortBy = 'due';
+    sortSelect.value = 'due';
+  }
   render();
 }));
 

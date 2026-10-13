@@ -8,6 +8,7 @@ A simple to-do list web app built with HTML, CSS, JavaScript, PHP and MySQL, run
 - Filters (All, Open, Done, Overdue), search and sorting
 - Drag-and-drop ordering ("My order")
 - Dark mode
+- Today and Upcoming views with task counts
 - Stats panel
 - Undo after deleting
 - Backup and restore (JSON) and CSV export
