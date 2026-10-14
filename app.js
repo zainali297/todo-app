@@ -165,17 +165,25 @@ function compare(a, b) {
 
 /* ---------- loading ---------- */
 
+let reminderPrimed = false;   // the first successful load checks for reminders; later ones only note what you just saw
+
 async function load() {
+  let ok = false;
   try {
     [tasks, categories] = await Promise.all([
       request('GET'),
       request('GET', null, CAT_API),
     ]);
     showError('');
+    ok = true;
   } catch (e) { showError(e.message); }
   if (pendingDelete) tasks = tasks.filter(t => t.id !== pendingDelete.id);
   renderCategoryControls();
   render();
+  if (ok) {
+    if (!reminderPrimed) { reminderPrimed = true; checkReminders(); }
+    else markDueSeen();
+  }
 }
 
 /* ---------- category controls ---------- */
@@ -973,6 +981,138 @@ restoreForm.addEventListener('submit', async e => {
   }
 });
 
+/* ---------- due-date reminders (browser notifications) ---------- */
+// Works while this page is open in the browser. Covers open tasks that are overdue or due today.
+
+const remindToggle = document.getElementById('remind-toggle');
+const remindTest = document.getElementById('remind-test');
+const remindStatus = document.getElementById('remind-status');
+const remindBadge = document.getElementById('remind-badge');
+const canNotify = 'Notification' in window;
+
+function remindersWanted() {
+  try { return localStorage.getItem('reminders') === 'on'; } catch (e) { return false; }
+}
+
+function setRemindersWanted(on) {
+  try { localStorage.setItem('reminders', on ? 'on' : 'off'); } catch (e) { /* storage unavailable */ }
+}
+
+function remindersActive() {
+  return canNotify && Notification.permission === 'granted' && remindersWanted();
+}
+
+function updateReminderUI(note) {
+  let text;
+  remindToggle.hidden = false;
+  remindTest.hidden = true;
+  remindBadge.textContent = '';
+  if (!canNotify) {
+    text = 'This browser does not support notifications.';
+    remindToggle.hidden = true;
+  } else if (Notification.permission === 'denied') {
+    text = 'Notifications are blocked for this site. Click the lock icon next to the address bar, set Notifications to Allow, then reload the page.';
+    remindToggle.hidden = true;
+  } else if (remindersActive()) {
+    text = 'Reminders are on.';
+    remindToggle.textContent = 'Turn off reminders';
+    remindTest.hidden = false;
+    remindBadge.textContent = 'On';
+  } else {
+    text = 'Reminders are off.';
+    remindToggle.textContent = 'Turn on reminders';
+  }
+  remindStatus.textContent = note ? `${text} ${note}` : text;
+}
+
+// Open tasks that are overdue or due today, most urgent first.
+function dueTasks() {
+  const today = todayStr();
+  return tasks
+    .filter(t => !t.is_done && t.due_date && t.due_date <= today)
+    .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0) ||
+      PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]);
+}
+
+// Which tasks have we already told you about today? (kept in this browser, reset every day)
+function readSeen() {
+  try {
+    const s = JSON.parse(localStorage.getItem('remindersSeen'));
+    if (s && s.date === todayStr() && Array.isArray(s.ids)) return new Set(s.ids);
+  } catch (e) { /* ignore */ }
+  return new Set();
+}
+
+function writeSeen(ids) {
+  try { localStorage.setItem('remindersSeen', JSON.stringify({ date: todayStr(), ids: [...ids] })); }
+  catch (e) { /* storage unavailable */ }
+}
+
+function showDueNotification(due) {
+  const overdue = due.filter(t => t.due_date < todayStr());
+  const dueToday = due.length - overdue.length;
+  const parts = [];
+  if (overdue.length) parts.push(`${overdue.length} overdue`);
+  if (dueToday) parts.push(`${dueToday} due today`);
+  const shown = due.slice(0, 3).map(t => '• ' + t.title);
+  const more = due.length - shown.length;
+  const body = shown.join('\n') + (more > 0 ? `\n…and ${more} more` : '');
+  try {
+    const n = new Notification('To-do list: ' + parts.join(', '), { body, tag: 'todo-due' });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      filter = overdue.length ? 'overdue' : 'today';
+      render();
+    };
+  } catch (e) { /* this browser cannot show notifications from a page */ }
+}
+
+// Notify when tasks are due that you have not been told about today.
+// (force = true is used when you turn reminders on, so you see how it works.)
+function checkReminders(force) {
+  if (!remindersActive()) return;
+  const due = dueTasks();
+  const seen = readSeen();
+  if (!due.length || (!force && due.every(t => seen.has(t.id)))) return;
+  showDueNotification(due);
+  writeSeen(due.map(t => t.id));
+}
+
+// You just changed tasks yourself, so don't notify you about what you can already see.
+function markDueSeen() {
+  if (!remindersActive()) return;
+  const ids = readSeen();
+  dueTasks().forEach(t => ids.add(t.id));
+  writeSeen(ids);
+}
+
+remindToggle.addEventListener('click', async () => {
+  if (!canNotify) return;
+  if (remindersActive()) {
+    setRemindersWanted(false);
+    updateReminderUI();
+    return;
+  }
+  let perm = Notification.permission;
+  if (perm === 'default') perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    setRemindersWanted(true);
+    updateReminderUI(dueTasks().length ? '' : 'Nothing is overdue or due today right now.');
+    checkReminders(true);
+  } else {
+    updateReminderUI(perm === 'denied' ? '' : 'Permission was not given, so reminders are still off.');
+  }
+});
+
+remindTest.addEventListener('click', () => {
+  try {
+    new Notification('Test notification', { body: 'If you can see this, reminders will work.', tag: 'todo-test' });
+  } catch (e) {
+    updateReminderUI('Your browser could not show a notification.');
+  }
+});
+
 /* ---------- theme ---------- */
 
 const themeBtn = document.getElementById('theme-toggle');
@@ -993,4 +1133,6 @@ themeBtn.addEventListener('click', () => {
 });
 
 updateThemeButton();
+updateReminderUI();
+setInterval(checkReminders, 60 * 1000);   // also catches tasks that become due when midnight passes
 load();
